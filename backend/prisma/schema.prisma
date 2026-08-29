@@ -1,0 +1,83 @@
+// This is your Prisma schema file for MySQL.
+// Run `npx prisma migrate dev` to apply changes.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── User ─────────────────────────────────────────────────────────────────────
+// Synced from Google OAuth on first authenticated API request.
+// Stored here for foreign-key relationships and future multi-tenant support.
+
+model User {
+  id        String     @id @default(cuid())
+  email     String     @unique @db.VarChar(255)
+  name      String?    @db.VarChar(255)
+  image     String?    @db.VarChar(512)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  campaigns Campaign[]
+
+  @@index([email])
+}
+
+// ─── Campaign ─────────────────────────────────────────────────────────────────
+// Represents one "send" event — a batch of emails with shared settings.
+
+model Campaign {
+  id           String     @id @default(cuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject      String     @db.VarChar(500)
+  body         String     @db.LongText
+  senderEmail  String     @db.VarChar(255)
+  hourlyLimit  Int        @default(50)
+  delaySeconds Int        @default(5)
+  scheduledAt  DateTime
+  totalCount   Int        @default(0)
+  sentCount    Int        @default(0)
+  failedCount  Int        @default(0)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  emailJobs    EmailJob[]
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ─── EmailJob ─────────────────────────────────────────────────────────────────
+// One row per recipient per campaign. ID is pre-generated in Node.js (UUID v4)
+// so we can use it as a deterministic BullMQ job ID before inserting.
+
+model EmailJob {
+  id             String    @id @db.VarChar(36)
+  campaignId     String
+  campaign       Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  recipientEmail String    @db.VarChar(255)
+  recipientName  String?   @db.VarChar(255)
+  status         JobStatus @default(PENDING)
+  scheduledAt    DateTime
+  sentAt         DateTime?
+  previewUrl     String?   @db.VarChar(1024)
+  errorMessage   String?   @db.Text
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Composite index for the dashboard query (status filter + time sort)
+  @@index([status, scheduledAt])
+  @@index([campaignId])
+  @@index([status])
+}
+
+// ─── Enum ─────────────────────────────────────────────────────────────────────
+
+enum JobStatus {
+  PENDING
+  SENT
+  FAILED
+}

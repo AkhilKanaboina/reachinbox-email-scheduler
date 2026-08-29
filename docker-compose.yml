@@ -1,0 +1,56 @@
+version: "3.9"
+
+# ─── Services ────────────────────────────────────────────────────────────────
+# MySQL is installed locally — only Redis is containerized.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  redis:
+    image: redis:7.2-alpine
+    container_name: reachinbox-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --save 60 1
+      --loglevel notice
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - reachinbox-net
+
+# ─── Redis Commander (optional UI for Redis) ────────────────────────────────
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: reachinbox-redis-ui
+    restart: unless-stopped
+    environment:
+      REDIS_HOSTS: "local:redis:6379"
+    ports:
+      - "8081:8081"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - reachinbox-net
+    profiles:
+      - tools  # Only starts with: docker-compose --profile tools up
+
+# ─── Volumes ─────────────────────────────────────────────────────────────────
+volumes:
+  redis_data:
+    driver: local
+
+# ─── Networks ─────────────────────────────────────────────────────────────────
+networks:
+  reachinbox-net:
+    driver: bridge
