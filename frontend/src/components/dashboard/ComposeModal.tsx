@@ -30,11 +30,17 @@ const defaultForm: FormState = {
   startTime: '',
 };
 
-/** Returns the ISO datetime string for "now + 2 minutes" */
+/** Returns the local datetime-local string for "now + 2 minutes" */
 function getDefaultStartTime(): string {
   const d = new Date(Date.now() + 2 * 60 * 1000);
-  return d.toISOString().slice(0, 16);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
+
 
 export function ComposeModal({ isOpen, onClose, onSuccess }: ComposeModalProps) {
   const { data: session } = useSession();

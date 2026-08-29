@@ -80,7 +80,7 @@ export class CampaignService {
       },
       opts: {
         // Deterministic ID — re-adding the same job ID is a safe no-op
-        jobId: `email-job:${emailJob.id}`,
+        jobId: `email-job-${emailJob.id}`,
         delay: startDelay + index * delaySeconds * 1_000,
         attempts: 3,
         backoff: {

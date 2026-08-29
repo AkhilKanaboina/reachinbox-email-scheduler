@@ -43,8 +43,17 @@ export default function DashboardPage() {
   useEffect(() => {
     if (status === 'authenticated') {
       fetchStats();
+
+      // Poll every 5 seconds so email status and counters update automatically in real-time
+      const interval = setInterval(() => {
+        fetchStats();
+        setRefreshTrigger((n) => n + 1);
+      }, 5000);
+
+      return () => clearInterval(interval);
     }
-  }, [status, refreshTrigger]);
+  }, [status]);
+
 
   if (status === 'loading') {
     return (

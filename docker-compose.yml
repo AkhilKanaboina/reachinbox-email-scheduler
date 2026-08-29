@@ -1,9 +1,5 @@
 version: "3.9"
 
-# ─── Services ────────────────────────────────────────────────────────────────
-# MySQL is installed locally — only Redis is containerized.
-# ─────────────────────────────────────────────────────────────────────────────
-
 services:
   redis:
     image: redis:7.2-alpine
@@ -28,7 +24,6 @@ services:
     networks:
       - reachinbox-net
 
-# ─── Redis Commander (optional UI for Redis) ────────────────────────────────
   redis-commander:
     image: rediscommander/redis-commander:latest
     container_name: reachinbox-redis-ui
@@ -43,14 +38,12 @@ services:
     networks:
       - reachinbox-net
     profiles:
-      - tools  # Only starts with: docker-compose --profile tools up
+      - tools
 
-# ─── Volumes ─────────────────────────────────────────────────────────────────
 volumes:
   redis_data:
     driver: local
 
-# ─── Networks ─────────────────────────────────────────────────────────────────
 networks:
   reachinbox-net:
     driver: bridge

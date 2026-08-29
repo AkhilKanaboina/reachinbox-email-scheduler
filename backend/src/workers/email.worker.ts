@@ -70,7 +70,7 @@ export function startEmailWorker(): Worker<EmailJobData> {
 
         // Re-queue with a deterministic ID so it's idempotent across restarts.
         // Key: same emailJobId + same hourKey = same ID within this hour window.
-        const retryJobId = `rate-limited:${emailJobId}:${rateLimit.hourKey}`;
+        const retryJobId = `rate-limited-${emailJobId}-${rateLimit.hourKey}`;
         const queue = getEmailQueue();
 
         try {
@@ -217,5 +217,70 @@ export function startEmailWorker(): Worker<EmailJobData> {
     `🚀 Email worker started (concurrency: ${env.WORKER_CONCURRENCY}, queue: ${EMAIL_QUEUE_NAME})`
   );
 
+  // Sync any orphaned PENDING jobs in MySQL that are missing from Redis
+  syncPendingJobsToQueue().catch((err) =>
+    console.error('Error syncing pending jobs on worker start:', err)
+  );
+
   return worker;
 }
+
+/**
+ * Scans MySQL for any PENDING EmailJobs that are missing from BullMQ (e.g. after Redis restart or flush),
+ * and enqueues them back into the BullMQ delayed queue.
+ */
+export async function syncPendingJobsToQueue(): Promise<number> {
+  try {
+    const pendingJobs = await prisma.emailJob.findMany({
+      where: { status: 'PENDING' },
+      include: { campaign: true },
+    });
+
+    if (pendingJobs.length === 0) return 0;
+
+    const queue = getEmailQueue();
+    const now = Date.now();
+    let reEnqueuedCount = 0;
+
+    for (const emailJob of pendingJobs) {
+      const jobId = `email-job-${emailJob.id}`;
+      const existingJob = await queue.getJob(jobId);
+
+      if (!existingJob) {
+        const delay = Math.max(0, emailJob.scheduledAt.getTime() - now);
+        await queue.add(
+          'send-email',
+          {
+            emailJobId: emailJob.id,
+            campaignId: emailJob.campaignId,
+            recipientEmail: emailJob.recipientEmail,
+            recipientName: emailJob.recipientName,
+            subject: emailJob.campaign.subject,
+            body: emailJob.campaign.body,
+            senderEmail: emailJob.campaign.senderEmail,
+            hourlyLimit: emailJob.campaign.hourlyLimit,
+          },
+          {
+            jobId,
+            delay,
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 5_000 },
+            removeOnComplete: { count: 5_000, age: 7 * 24 * 60 * 60 },
+            removeOnFail: false,
+          }
+        );
+        reEnqueuedCount++;
+      }
+    }
+
+    if (reEnqueuedCount > 0) {
+      console.log(`🔄 Recovered ${reEnqueuedCount} missing PENDING jobs back into BullMQ queue`);
+    }
+
+    return reEnqueuedCount;
+  } catch (err) {
+    console.error('Failed to sync pending jobs to queue:', err);
+    return 0;
+  }
+}
+
